@@ -8,10 +8,17 @@ function convertBase64(str) {
 async function APIcall() {
 	//Set locations and playlist id's then continue
 	await fetch("Nederland", "3KuxYcB3SY9lCNMeVVq5wl");
-};
+}
 
-async function unit_call(access_token,plaatsNaam, playlist_id, next = null) {
-	var url = "https://api.spotify.com/v1/playlists/" + playlist_id + "?market=NL&fields=tracks.items(track(artists%2Cname%2Cid%2Cpopularity%2Cpreview_url))";
+function get_value(arr, name) {
+	if (name in arr)
+		return arr[name]
+	return ""
+}
+
+
+async function unit_call(access_token, plaatsNaam, playlist_id) {
+	var url = "https://api.spotify.com/v1/playlists/" + playlist_id + "?market=NL&fields=tracks.items(track(artists%2Cname%2Cid%2Cpopularity%2Cpreview_url%2Cexternal_urls%2Calbum))";
 	var OAuth = {
 		url: url,
 		method: "GET",
@@ -24,72 +31,69 @@ async function unit_call(access_token,plaatsNaam, playlist_id, next = null) {
 
 	//Parse API response
 	var source = await axios(OAuth);
-	console.log(JSON.stringify(source.data));
+
 	var i = 0;
-	var arrayIDs = [];
-	var arrayTitles = [];
-	var arrayTrackPopularity = [];
-	var arrayArtists = [];
-	var arrayArtists2 = [];
+	var Hits = [];
+	var Artists = [];
+	var arrayTrackIDs = [];
 	var arrayArtistIDs = [];
 
 	// loop through items -> track array
-	for (i = 0; i < 50; i++) {
+	items = source.data['tracks']['items']
+	items.forEach(function (el) {
+		ele = el.track;
+		arrayArtistIDs.push(ele.artists[0].id);
 
-		var arrayData = [source.data['tracks']['items'][i]['track']];
-
-		// Add the arrayProperties data to the arrays
-		arrayData.forEach(function (el) {
-			arrayIDs.push(el.id)
-			arrayTitles.push(el.name)
-			arrayTrackPopularity.push(el.popularity)
-			arrayArtistIDs.push(el.artists[0].id)
-
-			var arrayAllArtists = [];
-			var arrayAllArtists2 = [];
-			var i3 = 0;
-			for (i3 = 0; i3 < el.artists.length; i3++) {
-				arrayAllArtists.push(el.artists[i3].name)
-				arrayAllArtists2.push(el.artists[i3].name)
-			}
-			arrayArtists.push(arrayAllArtists.join(', '))
-			arrayArtists2.push(',' + arrayAllArtists2.join(',') + ',');
+		Hits.push({
+			title: ele.name,
+			preview_url: ele.preview_url,
+			external_url: ele.external_urls ? ele.external_urls.spotify : "",
+			spotify_id: ele.id,
+			album_img: ele.album && ele.album.images ? ele.album.images[0].url : "",
+			danceability: 0,
+			tempo: 0
 		});
-	}
+		arrayTrackIDs.push(ele.id);
+	});
 
+	// get artist details
+	var art_ids = [
+		arrayArtistIDs.slice(0, 50),
+		arrayArtistIDs.slice(50, 100)
+	]
 
 	//Create string from arrayArtistIDs and parse url2 API response
-	var strArtistIDs = arrayArtistIDs.join('%2C');
-	var url2 = "https://api.spotify.com/v1/artists/?ids=" + strArtistIDs;
+	for (i = 0; i < 2; i++) {
+		var strArtistIDs = art_ids[i].join('%2C');
+
+		var url2 = "https://api.spotify.com/v1/artists/?ids=" + strArtistIDs;
+		OAuth.url = url2;
+		var source2 = await axios(OAuth);
+		var data2 = source2.data.artists;
+		data2.forEach(function(el){
+			Artists.push({
+				name: el.name,
+				spotify_id: el.id,
+				spotify_followers:el.followers.total,
+				image: el.images[0].url,
+				genre: el.genres.join(', ')
+			})
+		})
+	}
+	// console.log(Artists);
+
+	// create string from arrayTrackIDs and parse url API response for audio-features
+	var strTrackIDs = arrayTrackIDs.join("%2C");
+	url2 = "https://api.spotify.com/v1/audio-features/?ids=" + strTrackIDs;
 	OAuth.url = url2;
 	var source2 = await axios(OAuth);
-	var data2 = source2.data;
-	var i2 = 0;
-	var arrayGenres = [];
-
-	// loop through artists array
-	for (i2 = 0; i2 < 50; i2++) {
-
-		var arrayData2 = data2['artists'];
-
-		// Add the arrayProperties data to the arrays
-		arrayData2.forEach(function (el) {
-			arrayGenres.push(el.genres);
-		});
+	data = source2.data.audio_features;
+	for (i = 0; i < data.length; i++){
+		Hits[i].danceability = data[i].danceability;
+		Hits[i].tempo = data[i].tempo;
 	}
-
-	//Create single output array
-	var values = [];
-
-	// loop over the arrayIDs array
-	for (var i = 0; i < arrayIDs.length; i++) {
-		// push a row of data for each arrayId as 2nd array
-		values.push(["date", "x", arrayTitles[i], arrayTrackPopularity[i], arrayArtists[i], arrayGenres[i].join(', '), plaatsNaam, arrayArtists2[i]])
-	}
-
-	// write data to sheet
-	console.log(values);
-	// console.log(values.length);
+	// console.log(Hits)
+	return;
 }
 
 async function fetch(plaatsNaam, playlist_id) {
@@ -114,7 +118,7 @@ async function fetch(plaatsNaam, playlist_id) {
 		access_token = res.data.access_token;
 	console.log(access_token);
 
-	unit_call(access_token,plaatsNaam, playlist_id);
+	unit_call(access_token, plaatsNaam, playlist_id);
 };
 
 
